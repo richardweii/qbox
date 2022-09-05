@@ -5,7 +5,7 @@
 #include <time.h>
 #include <cstdio>
 #include <cstdlib>
-#include <algorithm>
+#include <cstring>
 
 #define GET_TIME                                                                                             \
   struct timeval tv;                                                                                         \
@@ -24,6 +24,8 @@
 #define TIME timestamp_str
 
 #define DEBUG(format, ...) printf(format, ##__VA_ARGS__)
+
+#define __FILENAME__ (strrchr(__FILE__, '/') ? (strrchr(__FILE__, '/') + 1) : __FILE__)
 
 //定义日志级别
 enum LOG_LEVEL {
@@ -51,16 +53,18 @@ enum LOG_LEVEL {
       DEBUG("\033[;31m[ERROR] %s %s:%d: " format "\n\033[0m", TIME, __FILE__, __LINE__, ##__VA_ARGS__); \
   } while (0)
 
-#define LOG_INFO(format, ...)                                                                            \
-  do {                                                                                                   \
-    GET_TIME                                                                                             \
-    if (level >= LOG_LEVEL_INFO) DEBUG("\033[;34m[INFO]  %s: " format "\n\033[0m", TIME, ##__VA_ARGS__); \
+#define LOG_INFO(format, ...)                                                                               \
+  do {                                                                                                      \
+    GET_TIME                                                                                                \
+    if (level >= LOG_LEVEL_INFO)                                                                            \
+      DEBUG("\033[;34m[INFO]  %s %s:%d: " format "\n\033[0m", TIME, __FILENAME__, __LINE__, ##__VA_ARGS__); \
   } while (0)
 
-#define LOG_DEBUG(format, ...)                                                                            \
-  do {                                                                                                    \
-    GET_TIME                                                                                              \
-    if (level >= LOG_LEVEL_DEBUG) DEBUG("\033[;33m[DEBUG] %s: " format "\n\033[0m", TIME, ##__VA_ARGS__); \
+#define LOG_DEBUG(format, ...)                                                                              \
+  do {                                                                                                      \
+    GET_TIME                                                                                                \
+    if (level >= LOG_LEVEL_DEBUG)                                                                           \
+      DEBUG("\033[;33m[DEBUG] %s %s:%d: " format "\n\033[0m", TIME, __FILENAME__, __LINE__, ##__VA_ARGS__); \
   } while (0)
 
 #ifndef NDEBUG
@@ -71,7 +75,7 @@ enum LOG_LEVEL {
     exit(1);                                                                                                     \
   }
 #else
-#define LOG_ASSERT(condition, format, ...)   
+#define LOG_ASSERT(condition, format, ...)
 #endif
 
 #endif
