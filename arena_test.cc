@@ -56,13 +56,13 @@ void TestBasic() {
                (double)(i * 10000 + j))
       }
 
-      // bar1.wait();
+      bar1.wait();
       LOG_INFO("==== Free ====");
       for (int j = 0; j < 1024; j++) {
         arena.Free(noobs[j]);
       }
 
-      // bar2.wait();
+      bar2.wait();
       LOG_INFO("==== Alloc 2 ===");
       noobs.clear();
 
