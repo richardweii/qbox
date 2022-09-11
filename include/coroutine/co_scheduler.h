@@ -12,7 +12,7 @@ namespace coro {
 class CoScheduler : public Coroutine {
  public:
   friend class Coroutine;
-  CoScheduler() : Coroutine(nullptr){};
+  CoScheduler() : Coroutine(this){};
   bool init();
   void start(bool new_thread = false) {
     if (new_thread) {

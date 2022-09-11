@@ -48,6 +48,7 @@ class Coroutine NOCOPYABLE {
  protected:
   friend class CoScheduler;
   virtual void routine();
+  void switchCoro(Coroutine *coro);
   static void entrance(transfer_t from);
   StackContext *context() { return _ctx; }
 

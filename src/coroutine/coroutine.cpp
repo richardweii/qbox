@@ -29,15 +29,14 @@ Coroutine::~Coroutine() {
 void Coroutine::entrance(transfer_t from) {
   Coroutine *coro = reinterpret_cast<Coroutine *>(from.data);
   Coroutine *sched = coro->_scheduler;
-  if (coro != sched) {
-    sched->context()->setFctx(from.fctx);
-  }
+  // set return context
+  sched->context()->setFctx(from.fctx);
+
   coro->_status = CO_STATUS_RUNNING;
   coro->routine();
   coro->_status = CO_STATUS_FINISH;
-  if (coro != sched) {
-    jump_fcontext(sched->context()->fctx(), nullptr);
-  }
+
+  jump_fcontext(sched->context()->fctx(), nullptr);
 }
 
 bool Coroutine::_initContext() {
@@ -62,20 +61,33 @@ void Coroutine::routine() {
   }
 }
 
+void Coroutine::switchCoro(Coroutine *coro) {
+  transfer_t t = jump_fcontext(coro->context()->fctx(), coro);
+  coro->context()->setFctx(t.fctx);
+}
+
 void Coroutine::yield() {
+  if (this == _scheduler) {
+    LOG_FATAL("DOT NOT ALLOW YIELD SCHEDULER.");
+  }
   _status = CO_STATUS_RUNNABLE;
-  transfer_t t = jump_fcontext(_scheduler->context()->fctx(), nullptr);
+  switchCoro(_scheduler);
 }
 
 void Coroutine::resume() {
-  transfer_t t = jump_fcontext(_ctx->fctx(), this);
-  _ctx->setFctx(t.fctx);
+  if (this == _scheduler) {
+    LOG_FATAL("DOT NOT ALLOW RESUME SCHEDULER.");
+  }
+  switchCoro(this);
 }
 
 void Coroutine::co_wait(int events) {
+  if (this == _scheduler) {
+    LOG_FATAL("DOT NOT ALLOW CO_WAIT SCHEDULER.");
+  }
   _waiting_events.store(events);
   _status = CO_STATUS_WAITING;
-  transfer_t t = jump_fcontext(_scheduler->context()->fctx(), nullptr);
+  switchCoro(_scheduler);
 }
 
 void Coroutine::wakeUpOnce() {
