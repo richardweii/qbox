@@ -1,15 +1,21 @@
 #ifndef __RWLOCK_H_
 #define __RWLOCK_H_
 
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+
 #include <atomic>
 #include <cstdint>
-#include <pthread.h>
-#include <unistd.h>
+
+#define cpu_relax() asm volatile("pause\n" : : : "memory")
+#define mb() asm volatile ("" : : : "memory")
+
 /**
  * Reader-Writer latch backed by pthread.h
  */
 class Latch {
-public:
+ public:
   Latch() { pthread_rwlock_init(&rwlock_, nullptr); };
   ~Latch() { pthread_rwlock_destroy(&rwlock_); }
 
@@ -38,7 +44,7 @@ public:
    */
   int RUnlock() { return pthread_rwlock_unlock(&rwlock_); }
 
-private:
+ private:
   pthread_rwlock_t rwlock_;
 };
 
@@ -54,7 +60,7 @@ static inline void AsmVolatilePause() {
 }
 
 class SpinLatch {
-public:
+ public:
   void WLock() {
     int8_t lock = 0;
     while (!_lock.compare_exchange_weak(lock, 1, std::memory_order_acquire)) {
@@ -87,12 +93,12 @@ public:
 
   void RUnlock() { _lock.fetch_add(-2, std::memory_order_release); }
 
-private:
+ private:
   std::atomic_int8_t _lock{0};
 };
 
 class SpinLock {
-public:
+ public:
   void Lock() {
     while (_lock.test_and_set(std::memory_order_acquire))
       ;
@@ -100,7 +106,7 @@ public:
 
   void Unlock() { _lock.clear(std::memory_order_release); }
 
-private:
+ private:
   std::atomic_flag _lock{0};
 };
 
