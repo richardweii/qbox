@@ -46,7 +46,7 @@ struct Foo {
 };
 
 TEST(RteRing, basic) {
-  RteRing<Foo> ring(16);
+  RteRing<Foo, RteRingMode::SPSC, 16> ring;
   std::vector<Foo> foos;
   for (int i = 0; i < 16; i++) {
     foos.emplace_back();
@@ -79,7 +79,7 @@ struct Noob {
 TEST(RteRing, Perf) {
   const int threads_num = 16;
   const int iteration = 100000;
-  RteRing<Noob> queue(4096);
+  RteRing<Noob, RteRingMode::MPMC> queue;
 
   std::vector<Noob> noobs;
   noobs.reserve(iteration * threads_num);
@@ -94,7 +94,7 @@ TEST(RteRing, Perf) {
     threads.emplace_back([i, &queue, &noobs]() -> void {
       for (int j = 0; j < iteration;) {
         auto rc = queue.enqueue((&(noobs)[i * iteration + j]));
-        if (rc == RteRing<Noob>::RTE_RING_OK) {
+        if (rc == RteRing<Noob, RteRingMode::MPMC>::RTE_RING_OK) {
           j++;
         }
       }
@@ -106,9 +106,9 @@ TEST(RteRing, Perf) {
       for (int j = 0; j < iteration;) {
         Noob *noob = nullptr;
         auto rc = queue.dequeue(&noob);
-        if (rc == RteRing<Noob>::RTE_RING_OK) {
-          // EXPECT_NE(noob, nullptr);
-          // EXPECT_EQ(noob->c, noob->a + noob->b);
+        if (rc == RteRing<Noob, RteRingMode::MPMC>::RTE_RING_OK) {
+          EXPECT_NE(noob, nullptr);
+          EXPECT_EQ(noob->c, noob->a + noob->b);
           j++;
         }
       }
