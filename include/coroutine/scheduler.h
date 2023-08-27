@@ -16,6 +16,7 @@ bool is_coro_env();
 Coroutine *current();
 void yield();
 void co_wait(int events = 1);
+Scheduler *coro_scheduler();
 }  // namespace this_coroutine
 
 class Scheduler : public Coroutine {
@@ -24,6 +25,7 @@ class Scheduler : public Coroutine {
  public:
   explicit Scheduler(int coroutine_num);
   ~Scheduler();
+  void regester_polling_func(AdvanceFunc func) { polling_ = std::move(func); }
   void scheduling();
   void exit() { stop = true; }
   void addTask(CoroutineTask &&task) { queue_.enqueue(std::move(task)); }
@@ -43,7 +45,7 @@ class Scheduler : public Coroutine {
   CoroutineTask task_buf_[kTaskBufLen];
   int task_cnt_{0};
   int task_pos_{0};
-
+  AdvanceFunc polling_;
   std::vector<std::shared_ptr<Coroutine>> coros_;
   std::list<Coroutine *> idle_list_;
   std::list<Coroutine *> runnable_list_;

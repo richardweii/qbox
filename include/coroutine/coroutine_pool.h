@@ -13,6 +13,8 @@ class CoroutinePool {
  public:
   CoroutinePool(int thread_num, int coroutine_per_thread);
 
+  void regester_polling_func(AdvanceFunc func);
+
   void start();
 
   ~CoroutinePool();

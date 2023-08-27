@@ -25,3 +25,8 @@ void CoroutinePool::start() {
     workers_.emplace_back(&Scheduler::scheduling, sched.get());
   }
 };
+void CoroutinePool::regester_polling_func(AdvanceFunc func) {
+  for (auto &sched : schedulers_) {
+    sched->regester_polling_func(func);
+  }
+}

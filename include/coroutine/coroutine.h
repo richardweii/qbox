@@ -4,7 +4,7 @@
 #include <list>
 
 #include "concurrent_queue.h"
-#include "fcontext.h"
+#include <ucontext.h>
 
 using coro_id_t = int;
 using CoroutineTask = std::function<void()>;
@@ -19,27 +19,25 @@ enum class CoroutineState {
 class StackContext {
   static constexpr int kCoroutineStackSize = 2 << 20;  // 2MB
  public:
-  StackContext() : _fctx(), base_(new char[kCoroutineStackSize]), _size(kCoroutineStackSize) {}
+  StackContext() : fctx_(), base_(new char[kCoroutineStackSize]), size_(kCoroutineStackSize) {}
   ~StackContext() { delete[] base_; }
   inline char *sp() { return base_ + kCoroutineStackSize; }  // 栈地址是从高到低的，所以从边界开始
-  inline size_t size() { return _size; }
+  inline size_t size() { return size_; }
 
-  inline fcontext_t fctx() { return _fctx; }
-  inline void setFctx(fcontext_t fctx) { _fctx = fctx; }
+  inline ucontext_t *fctx() { return &fctx_; }
+  inline void setFctx(ucontext_t fctx) { fctx_ = fctx; }
 
  private:
-  fcontext_t _fctx;
+  ucontext_t fctx_;
   char *base_ = nullptr;  // 协程在堆上的位置
-  size_t _size;
+  size_t size_;
 };
 
 class Scheduler;
 class Coroutine {
  public:
   friend class Scheduler;
-  Coroutine(coro_id_t id, Scheduler *sched) : coro_id_(id), sched_(sched) {
-    ctx_.setFctx(make_fcontext(ctx_.sp(), ctx_.size(), &Coroutine::entrance));
-  }
+  Coroutine(coro_id_t id, Scheduler *sched);
   void yield();
   void co_wait(int events = 1);
   void wakeup_once();
@@ -53,9 +51,9 @@ class Coroutine {
   virtual void routine();
 
  private:
-  void switch_coro(Coroutine *target);
+  void switch_coro(Coroutine *current, Coroutine *target);
   void resume();
-  static void entrance(transfer_t from);
+  static void entrance();
 
   coro_id_t coro_id_;
   Scheduler *sched_;

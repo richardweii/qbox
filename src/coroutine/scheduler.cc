@@ -1,8 +1,9 @@
 #include "coroutine/scheduler.h"
 
 #include <atomic>
-#include "likely.h"
+
 #include "coroutine/coroutine.h"
+#include "likely.h"
 #include "logging.h"
 
 thread_local Scheduler *scheduler = nullptr;
@@ -27,6 +28,9 @@ void Scheduler::scheduling() {
   while (!stop) {
     if (unlikely(runnable_list_.empty())) {
       // do none-block polling work
+      if (likely(polling_ != nullptr)) {
+        polling_();
+      }
     }
     wakeup();
     dispatch();
@@ -98,4 +102,6 @@ void co_wait(int events) {
 }
 
 bool is_coro_env() { return scheduler != nullptr; };
+
+Scheduler *coro_scheduler() { return scheduler; };
 }  // namespace this_coroutine

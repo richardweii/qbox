@@ -4,12 +4,10 @@
 #include "coroutine/scheduler.h"
 #include "logging.h"
 
-void Coroutine::entrance(transfer_t from) {
-  Coroutine *coro = reinterpret_cast<Coroutine *>(from.data);
+void Coroutine::entrance() {
+  Coroutine *coro = this_coroutine::current();
   Coroutine *sched = coro->sched_;
-  sched->ctx_.setFctx(from.fctx);
   coro->routine();
-  jump_fcontext(sched->ctx_.fctx(), nullptr);
 }
 
 void Coroutine::routine() {
@@ -20,32 +18,33 @@ void Coroutine::routine() {
     // exit
     state_ = CoroutineState::IDLE;
     clear_user_ctx();
-    yield();
+    switch_coro(this, sched_);
   }
 }
 
-void Coroutine::yield() { 
+void Coroutine::yield() {
   if (this == sched_) {
     LOG_FATAL("DOT NOT ALLOW YIELD SCHEDULER.");
   }
   state_ = CoroutineState::RUNNABLE;
-  switch_coro(sched_);
+  switch_coro(this, sched_);
 }
 
-void Coroutine::resume() {
-  switch_coro(this);
-}
+// only sheduler can use
+void Coroutine::resume() { switch_coro(sched_, this); }
 
-void Coroutine::switch_coro(Coroutine *target) {
-  transfer_t t = jump_fcontext(target->ctx_.fctx(), target);
-  target->ctx_.setFctx(t.fctx);
+void Coroutine::switch_coro(Coroutine *current, Coroutine *target) {
+  if (swapcontext(current->ctx_.fctx(), target->ctx_.fctx()) == -1) {
+    perror("switch coroutine failed");
+    exit(EXIT_FAILURE);
+  }
 }
 
 void Coroutine::co_wait(int events) {
   if (events == 0) return;
   if (waiting_events_.fetch_add(events) + events > 0) {
     state_ = CoroutineState::WAITING;
-    yield();
+    switch_coro(this, sched_);
   }
 }
 
@@ -55,5 +54,18 @@ void Coroutine::wakeup_once() {
   if ((--waiting_events_) == 0) {
     LOG_ASSERT(scheduler != nullptr, "invalid scheduler");
     sched_->addWakupCoroutine(this);
+  }
+}
+
+Coroutine::Coroutine(coro_id_t id, Scheduler *sched) : coro_id_(id), sched_(sched) {
+  if (getcontext(ctx_.fctx()) == -1) {
+    perror("get context failed");
+  };
+  ctx_.fctx()->uc_stack.ss_sp = ctx_.sp();
+  ctx_.fctx()->uc_stack.ss_size = ctx_.size();
+
+  if (sched != this) {
+    ctx_.fctx()->uc_link = sched->ctx_.fctx();
+    makecontext(ctx_.fctx(), &Coroutine::entrance, 0);
   }
 }
