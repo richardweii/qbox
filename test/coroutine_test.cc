@@ -1,92 +1,38 @@
-#include "coroutine/coroutine.h"
+#include <unistd.h>
 
-#include "coroutine/co_scheduler.h"
-#include "gtest/gtest.h"
-#include "logging.h"
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <thread>
 
-using namespace std;
-using namespace coro;
-TEST(Coroutine, Basic) {
-  CoScheduler sched;
-  bool succ = sched.init();
-  ASSERT_TRUE(succ);
-  sched.start(true);
+#include "coroutine/coroutine_pool.h"
+#include "coroutine/scheduler.h"
 
-  Coroutine coro1(&sched);
-  Coroutine coro2(&sched);
-  Coroutine coro3(&sched);
+int switch_time = 100000;
+int coro_num = 32;
 
-  coro1.run([&coro1]() {
-    LOG_INFO("now in coroutine %ld, step 1", coro1.id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro1.id());
-    this_coroutine::co_wait();
-    LOG_INFO("now in coroutine %ld, step 3", coro1.id());
-  });
+int main() {
+  CoroutinePool coro_pool(1, coro_num);
+  std::atomic_int wg{0};
+  auto func = [&wg]() {
+    for (int i = 0; i < switch_time; i++) {
+      this_coroutine::yield();
+    }
+    wg.fetch_add(1);
+  };
 
-  coro2.run([&coro2]() {
-    LOG_INFO("now in coroutine %ld, step 1", coro2.id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro2.id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 3", coro2.id());
-  });
+  for (int i = 0; i < coro_num; i++) {
+    coro_pool.enqueue(func);
+  }
 
-  coro3.run([&coro3, &coro1]() {
-    LOG_INFO("now in coroutine %ld, step 1", coro3.id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro3.id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 3", coro3.id());
-    LOG_INFO("now in coroutine %ld, wake up coro1", coro3.id());
-    coro1.wakeUpOnce();
-  });
+  auto start = std::chrono::system_clock::now();
+  coro_pool.start();
+  while (wg.load() != coro_num)
+    ;
+  auto end = std::chrono::system_clock::now();
+  long elapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  double switch_cost_avg = elapse * 1.0 / (switch_time * coro_num);
 
-  this_thread::sleep_for(std::chrono::milliseconds(100));
-  sched.stop();
-  sched.join();
-}
-
-TEST(Coroutine, Generic) {
-  CoScheduler sched;
-  bool succ = sched.init();
-  ASSERT_TRUE(succ);
-  sched.start(true);
-
-  Coroutine coro1(&sched);
-  Coroutine coro2(&sched);
-  Coroutine coro3(&sched);
-
-  coro1.run([](Coroutine *coro) {
-    LOG_INFO("now in coroutine %ld, step 1", coro->id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro->id());
-    this_coroutine::co_wait();
-    LOG_INFO("now in coroutine %ld, step 3", coro->id());
-  }, &coro1);
-
-  coro2.run([](Coroutine *coro) {
-    LOG_INFO("now in coroutine %ld, step 1", coro->id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro->id());
-    this_coroutine::co_wait();
-    LOG_INFO("now in coroutine %ld, step 3", coro->id());
-  }, &coro2);
-
-  coro3.run([](Coroutine *coro, Coroutine *a, Coroutine *b) {
-    LOG_INFO("now in coroutine %ld, step 1", coro->id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 2", coro->id());
-    this_coroutine::yield();
-    LOG_INFO("now in coroutine %ld, step 3", coro->id());
-
-    LOG_INFO("now in coroutine %ld, wake up other coro %ld", coro->id(), a->id());
-    a->wakeUpOnce();
-    LOG_INFO("now in coroutine %ld, wake up other coro %ld", coro->id(), b->id());
-    b->wakeUpOnce();
-  }, &coro3, &coro1, &coro2);
-
-  this_thread::sleep_for(std::chrono::milliseconds(100));
-  sched.stop();
-  sched.join();
+  std::cout << "elapse : " << elapse << "us, swtich cost average: " << switch_cost_avg << "us/switch" << std::endl;
+  return 0;
 }

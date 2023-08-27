@@ -6,6 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS on)
 enable_testing()
 add_subdirectory(third_party/googletest)
 include_directories(include third_party/googletest/googletest/include)
+include_directories(include third_party/)
 set(GTEST_LIB gtest gtest_main)
 
 add_subdirectory(src)

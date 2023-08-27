@@ -1,75 +1,69 @@
-#ifndef _COROUTINE_H_
-#define _COROUTINE_H_
-
+#pragma once
 #include <atomic>
 #include <functional>
-#include <thread>
+#include <list>
 
+#include "concurrent_queue.h"
 #include "fcontext.h"
-#include "nocopyable.h"
 
-namespace coro {
-using Task = std::function<void()>;
+using coro_id_t = int;
+using CoroutineTask = std::function<void()>;
 
-class StackContext;
-class CoScheduler;
-
-class Coroutine NOCOPYABLE {
- public:
-  enum CoroStatus {
-    CO_STATUS_BORN = 0,
-    CO_STATUS_RUNNABLE,
-    CO_STATUS_RUNNING,
-    CO_STATUS_WAITING,
-    CO_STATUS_FINISH,
-    CO_STATUS_EXIT,
-  };
-
-  Coroutine(CoScheduler *scheduler);
-  virtual ~Coroutine();
-
-  bool run(Task &&task) {
-    _task = std::move(task);
-    return _initContext();
-  }
-
-  template <typename Callable, typename... Args>
-  bool run(Callable &&callable, Args &&...args) {
-    _task = std::move(std::bind(std::forward<Callable>(callable), std::forward<Args>(args)...));
-    return _initContext();
-  }
-
-  void resume();
-  void yield();
-  void co_wait(int events = 1);
-  void wakeUpOnce();
-  uint64_t id() const { return _coro_id; }
-
- protected:
-  friend class CoScheduler;
-  virtual void routine();
-  void switchCoro(Coroutine *coro);
-  static void entrance(transfer_t from);
-  StackContext *context() { return _ctx; }
-
-  CoScheduler *_scheduler;
-  Task _task;
-  uint64_t _coro_id;
-  CoroStatus _status;
-  StackContext *_ctx;
-
-  Coroutine *_prev = nullptr;
-  Coroutine *_next = nullptr;
-  std::atomic_int _waiting_events{0};
-
- private:
-  bool _initContext();
+// idle -> runnable -> waiting -> runnable -> idle
+enum class CoroutineState {
+  IDLE,
+  RUNNABLE,
+  WAITING,
 };
 
-namespace this_coroutine {
-void yield();
-void co_wait(int events = 1);
-}  // namespace this_coroutine
-}  // namespace coro
+class StackContext {
+  static constexpr int kCoroutineStackSize = 2 << 20;  // 2MB
+ public:
+  StackContext() : _fctx(), base_(new char[kCoroutineStackSize]), _size(kCoroutineStackSize) {}
+  ~StackContext() { delete[] base_; }
+  inline char *sp() { return base_ + kCoroutineStackSize; }  // 栈地址是从高到低的，所以从边界开始
+  inline size_t size() { return _size; }
 
-#endif  // _COROUTINE_H_
+  inline fcontext_t fctx() { return _fctx; }
+  inline void setFctx(fcontext_t fctx) { _fctx = fctx; }
+
+ private:
+  fcontext_t _fctx;
+  char *base_ = nullptr;  // 协程在堆上的位置
+  size_t _size;
+};
+
+class Scheduler;
+class Coroutine {
+ public:
+  friend class Scheduler;
+  Coroutine(coro_id_t id, Scheduler *sched) : coro_id_(id), sched_(sched) {
+    ctx_.setFctx(make_fcontext(ctx_.sp(), ctx_.size(), &Coroutine::entrance));
+  }
+  void yield();
+  void co_wait(int events = 1);
+  void wakeup_once();
+  coro_id_t id() const { return coro_id_; }
+
+  void *user_ctx() const { return user_ctx_; }
+  void set_user_ctx(void *ctx) { user_ctx_ = ctx; }
+  void clear_user_ctx() { user_ctx_ = nullptr; }
+
+ protected:
+  virtual void routine();
+
+ private:
+  void switch_coro(Coroutine *target);
+  void resume();
+  static void entrance(transfer_t from);
+
+  coro_id_t coro_id_;
+  Scheduler *sched_;
+  StackContext ctx_;
+  CoroutineTask task_;
+  std::atomic_int waiting_events_{};
+  std::list<Coroutine *>::iterator iter{};
+  CoroutineState state_{CoroutineState::IDLE};
+  //---------- for user ------------
+  void *user_ctx_ = nullptr;
+};
